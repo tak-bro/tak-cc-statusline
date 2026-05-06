@@ -1,0 +1,32 @@
+{
+  "name": "tak-cc-statusline",
+  "version": "0.1.0",
+  "description": "A minimal, colorful single-line statusline for Claude Code",
+  "bin": {
+    "tak-cc-statusline": "install.js"
+  },
+  "files": [
+    "install.js",
+    "scripts/"
+  ],
+  "keywords": [
+    "claude-code",
+    "claude",
+    "statusline",
+    "anthropic",
+    "cli"
+  ],
+  "author": "Louis (tak-bro)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tak-bro/tak-cc-statusline.git"
+  },
+  "homepage": "https://github.com/tak-bro/tak-cc-statusline#readme",
+  "bugs": {
+    "url": "https://github.com/tak-bro/tak-cc-statusline/issues"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
