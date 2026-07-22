@@ -3,7 +3,7 @@
 A minimal, colorful single-line statusline for [Claude Code](https://claude.com/claude-code).
 
 ```
-Opus 4.6 | encl • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h)
+Opus 4.6 · high | encl • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h)
 ```
 
 ## Install
@@ -26,7 +26,7 @@ The installer prompts before overwriting any existing `statusLine` config or scr
 
 | Segment | Source |
 |---|---|
-| Model | Claude Code, with `(1M context)` etc. stripped |
+| Model · effort | Claude Code, with `(1M context)` etc. stripped; reasoning effort (`.effort.level`) appended when reported |
 | Folder · branch | cwd + `git symbolic-ref` |
 | Context bar + % | Claude Code's `context_window.used_percentage` |
 | 5h / 7d % | Anthropic OAuth usage endpoint (cached 60s) |
