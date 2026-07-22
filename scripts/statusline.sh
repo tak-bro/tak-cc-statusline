@@ -26,14 +26,19 @@ portable_iso_to_epoch() {
 # used% returns "" for non-numbers (missing, null, string) so we can detect properly
 parsed=$(printf '%s' "$input" | jq -r '
 	(.model.display_name // ""),
+	(.effort.level // ""),
 	(.workspace.current_dir // .cwd // ""),
 	(.context_window.used_percentage | if type == "number" then tostring else "" end)
 ' 2>/dev/null)
 
 model=$(printf '%s\n' "$parsed" | sed -n '1p' | sed -E 's/[[:space:]]*\([^)]*\)//g')
-dir=$(printf '%s\n' "$parsed" | sed -n '2p')
-used=$(printf '%s\n' "$parsed" | sed -n '3p')
+effort=$(printf '%s\n' "$parsed" | sed -n '2p')
+dir=$(printf '%s\n' "$parsed" | sed -n '3p')
+used=$(printf '%s\n' "$parsed" | sed -n '4p')
 dir_name=$(basename "$dir" 2>/dev/null)
+
+# Append reasoning effort (dot style) to model when Claude Code reports it
+[ -n "$effort" ] && model="${model} · ${effort}"
 
 # --- git branch (only if dir is provided; handles regular repos and worktrees) ---
 branch=""
