@@ -1,9 +1,9 @@
 # tak-cc-statusline
 
-A minimal, colorful single-line statusline for [Claude Code](https://claude.com/claude-code).
+A minimal, colorful statusline for [Claude Code](https://claude.com/claude-code).
 
 ```
-Opus 4.6 · high | encl • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h)
+Opus 4.6 · high | encl • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
 ```
 
 ## Install
@@ -30,15 +30,34 @@ The installer prompts before overwriting any existing `statusLine` config or scr
 | Folder · branch | cwd + `git symbolic-ref` |
 | Context bar + % | Claude Code's `context_window.used_percentage` |
 | 5h / 7d % | Anthropic OAuth usage endpoint (cached 60s) |
+| Per-model weekly % | Same endpoint's model-scoped weekly limits (e.g. `Fable 12%`); shown only when your plan has them, and labeled with whatever name the API reports |
 
 Bar color: green `< 50%`, yellow `≥ 50%`, rose `≥ 75%`, red `≥ 90%`.
+
+## Narrow terminals
+
+Claude Code truncates each status line rather than wrapping it, so on a narrow terminal the right-hand segments would simply disappear. Instead the line splits once, into identity and metrics:
+
+```
+Opus 4.6 · high | encl • main | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%   ← wide
+
+Opus 4.6 · high | encl • main                                                                 ← narrow
+█░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
+```
+
+Two rows at most. On a narrow pane vertical space is scarcer than horizontal, and a third row costs more than the truncation it avoids — so past that point the *tail* gets cut (a branch name you already know, or the last usage figure) rather than a whole segment.
+
+Width comes from `$COLUMNS`, which Claude Code sets for the statusline process. If it is missing everything stays on one line, which is also the exact output you get on a wide terminal — the split never changes a line that already fits.
+
+Note that Claude Code re-runs the statusline on message and state changes, not on terminal resize, so after resizing the split catches up on the next turn. Add `"refreshInterval": 2` to the `statusLine` block in `settings.json` if you want it to track the window immediately.
 
 ## Customize
 
 Both scripts live in `~/.claude/` after install — edit them in place.
 
 - **Colors**: `pick_color()` in `statusline.sh`
-- **Bar width**: the `10` in `build_bar "$used_int" 10`
+- **Bar width**: `BAR_WIDTH` near the top of `statusline.sh`
+- **Split threshold**: `WIDTH_MARGIN` — columns held back from `$COLUMNS`; raise it to split earlier
 - **Bar characters**: `█` and `░` in `build_bar()` — try `▓`/`▒`, `■`/`□`, `▰`/`▱`
 - **Model / folder / branch colors**: search for `\033[38;2;` near the bottom
 
@@ -55,7 +74,7 @@ sh ~/.claude/fetch-usage.sh
 cat ~/.claude/.statusline_usage_cache
 ```
 
-If empty, your OAuth token couldn't be read. macOS: check Keychain for `Claude Code-credentials`. Linux: check `~/.claude/.credentials.json` exists.
+A healthy cache is five lines: the 5h and 7d percentages, their two reset timestamps, and the per-model weekly limits (empty if your plan has none). If the file is empty, your OAuth token couldn't be read. macOS: check Keychain for `Claude Code-credentials`. Linux: check `~/.claude/.credentials.json` exists.
 
 **API returns 401**
 
@@ -84,6 +103,8 @@ Forked from [xleddyl/claude-watch](https://github.com/xleddyl/claude-watch) — 
 - macOS + Linux portability
 - `$CLAUDE_CONFIG_DIR` support
 - Background fetch with locking, atomic writes, and retry throttling
+- Per-model weekly limits from the usage endpoint's `limits` array
+- Width-aware layout that splits into two rows instead of being truncated
 
 ## License
 
