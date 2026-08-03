@@ -1,6 +1,6 @@
 # tak-cc-statusline
 
-A minimal, colorful single-line statusline for [Claude Code](https://claude.com/claude-code).
+A minimal, colorful statusline for [Claude Code](https://claude.com/claude-code).
 
 ```
 Opus 4.6 · high | encl • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
@@ -57,7 +57,7 @@ Both scripts live in `~/.claude/` after install — edit them in place.
 
 - **Colors**: `pick_color()` in `statusline.sh`
 - **Bar width**: `BAR_WIDTH` near the top of `statusline.sh`
-- **Wrap threshold**: `WIDTH_MARGIN` — columns held back from `$COLUMNS`; raise it to break earlier
+- **Split threshold**: `WIDTH_MARGIN` — columns held back from `$COLUMNS`; raise it to split earlier
 - **Bar characters**: `█` and `░` in `build_bar()` — try `▓`/`▒`, `■`/`□`, `▰`/`▱`
 - **Model / folder / branch colors**: search for `\033[38;2;` near the bottom
 
@@ -74,7 +74,7 @@ sh ~/.claude/fetch-usage.sh
 cat ~/.claude/.statusline_usage_cache
 ```
 
-If empty, your OAuth token couldn't be read. macOS: check Keychain for `Claude Code-credentials`. Linux: check `~/.claude/.credentials.json` exists.
+A healthy cache is five lines: the 5h and 7d percentages, their two reset timestamps, and the per-model weekly limits (empty if your plan has none). If the file is empty, your OAuth token couldn't be read. macOS: check Keychain for `Claude Code-credentials`. Linux: check `~/.claude/.credentials.json` exists.
 
 **API returns 401**
 
@@ -103,6 +103,8 @@ Forked from [xleddyl/claude-watch](https://github.com/xleddyl/claude-watch) — 
 - macOS + Linux portability
 - `$CLAUDE_CONFIG_DIR` support
 - Background fetch with locking, atomic writes, and retry throttling
+- Per-model weekly limits from the usage endpoint's `limits` array
+- Width-aware layout that splits into two rows instead of being truncated
 
 ## License
 
