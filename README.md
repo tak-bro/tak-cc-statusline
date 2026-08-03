@@ -3,7 +3,7 @@
 A minimal, colorful single-line statusline for [Claude Code](https://claude.com/claude-code).
 
 ```
-Opus 4.6 · high | encl • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h)
+Opus 4.6 · high | encl • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
 ```
 
 ## Install
@@ -30,6 +30,7 @@ The installer prompts before overwriting any existing `statusLine` config or scr
 | Folder · branch | cwd + `git symbolic-ref` |
 | Context bar + % | Claude Code's `context_window.used_percentage` |
 | 5h / 7d % | Anthropic OAuth usage endpoint (cached 60s) |
+| Per-model weekly % | Same endpoint's model-scoped weekly limits (e.g. `Fable 12%`); shown only when your plan has them, and labeled with whatever name the API reports |
 
 Bar color: green `< 50%`, yellow `≥ 50%`, rose `≥ 75%`, red `≥ 90%`.
 

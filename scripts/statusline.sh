@@ -52,16 +52,19 @@ five_h=""
 seven_d=""
 five_h_reset=""
 seven_d_reset=""
+scoped=""
 need_refresh=0
 now_epoch=$(date -u +%s)
 
 if [ -f "$USAGE_CACHE" ]; then
-	# Single read block instead of 4 separate sed calls
+	# Single read block instead of separate sed calls.
+	# Line 5 is absent in caches written by older versions; `scoped` stays empty.
 	{
 		IFS= read -r five_h
 		IFS= read -r seven_d
 		IFS= read -r five_h_reset
 		IFS= read -r seven_d_reset
+		IFS= read -r scoped
 	} < "$USAGE_CACHE" 2>/dev/null
 	cache_mtime=$(portable_mtime "$USAGE_CACHE")
 	if [ -n "$cache_mtime" ]; then
@@ -204,4 +207,29 @@ if [ -n "$seven_d" ]; then
 		delta=$(compute_delta "$seven_d_reset")
 		[ -n "$delta" ] && printf " \033[2m\033[38;2;156;162;175m(%s)\033[0m" "$delta"
 	fi
+fi
+
+# per-model weekly usage (e.g. "Fable 12%"); shares the 7d reset window, so no delta
+if [ -n "$scoped" ]; then
+	usage_shown=0
+	{ [ -n "$five_h" ] || [ -n "$seven_d" ]; } && usage_shown=1
+	set -f   # scoped is unquoted below; keep the shell from globbing it
+	old_ifs=$IFS
+	IFS=';'
+	for record in $scoped; do
+		# name may itself contain ":", so split on the LAST colon
+		name=${record%:*}
+		pct=${record##*:}
+		[ -z "$name" ] && continue
+		case "$pct" in ''|*[!0-9]*) continue ;; esac
+		if [ "$usage_shown" = "1" ]; then
+			printf "%b" "$DOT"
+		else
+			printf "%b" "$SEP"
+		fi
+		printf "\033[38;2;156;162;175m%s %s%%\033[0m" "$name" "$pct"
+		usage_shown=1
+	done
+	IFS=$old_ifs
+	set +f
 fi

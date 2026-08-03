@@ -7,6 +7,7 @@
 #   Line 2: seven_day.utilization (integer %)
 #   Line 3: five_hour.resets_at (raw ISO string)
 #   Line 4: seven_day.resets_at (raw ISO string)
+#   Line 5: model-scoped weekly limits, "Name:pct" joined by ";" (may be empty)
 
 # Honor Claude Code's CLAUDE_CONFIG_DIR override, fallback to ~/.claude
 CACHE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
@@ -124,12 +125,21 @@ if [ ! -s "$body_file" ]; then
 	exit 0
 fi
 
-# Parse all 4 fields; type-check utilization to reject non-numbers
+# Parse all 5 fields; type-check utilization to reject non-numbers.
+# Field 5 always emits exactly one line (empty when there are no scoped limits)
+# so the positional `sed -n Np` extraction below never shifts.
 parsed=$(jq -r '
 	(.five_hour.utilization | if type == "number" then tostring else "" end),
 	(.seven_day.utilization | if type == "number" then tostring else "" end),
 	(.five_hour.resets_at // ""),
-	(.seven_day.resets_at // "")
+	(.seven_day.resets_at // ""),
+	((.limits // [])
+		| map(select(
+			.kind == "weekly_scoped"
+			and (.scope.model.display_name | type == "string")
+			and (.percent | type == "number")
+		) | "\(.scope.model.display_name):\(.percent | floor)")
+		| join(";"))
 ' "$body_file" 2>/dev/null)
 
 rm -f "$body_file" 2>/dev/null
@@ -138,6 +148,7 @@ five_h_raw=$(printf '%s\n' "$parsed" | sed -n '1p')
 seven_d_raw=$(printf '%s\n' "$parsed" | sed -n '2p')
 five_h_reset=$(printf '%s\n' "$parsed" | sed -n '3p')
 seven_d_reset=$(printf '%s\n' "$parsed" | sed -n '4p')
+scoped=$(printf '%s\n' "$parsed" | sed -n '5p')
 
 # Both utilizations must be valid numbers; otherwise skip cache write
 if [ -n "$five_h_raw" ] && [ -n "$seven_d_raw" ]; then
@@ -145,7 +156,7 @@ if [ -n "$five_h_raw" ] && [ -n "$seven_d_raw" ]; then
 	seven_d=$(printf "%.0f" "$seven_d_raw" 2>/dev/null)
 	# Atomic write: only mv if printf succeeded fully (avoids corrupt cache on disk-full / SIGPIPE)
 	tmp="${USAGE_CACHE}.tmp.$$"
-	if printf '%s\n%s\n%s\n%s\n' "$five_h" "$seven_d" "$five_h_reset" "$seven_d_reset" > "$tmp" 2>/dev/null; then
+	if printf '%s\n%s\n%s\n%s\n%s\n' "$five_h" "$seven_d" "$five_h_reset" "$seven_d_reset" "$scoped" > "$tmp" 2>/dev/null; then
 		mv -f "$tmp" "$USAGE_CACHE"
 	else
 		rm -f "$tmp" 2>/dev/null
