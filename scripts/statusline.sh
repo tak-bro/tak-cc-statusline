@@ -229,42 +229,40 @@ if [ -n "$scoped_clean" ]; then
 	set +f
 fi
 
-# --- decide where the line breaks ---
+# --- decide whether the line breaks ---
 # Claude Code truncates each status line rather than soft-wrapping it, so anything
-# past the terminal width is lost. Groups are packed greedily: a group that would
-# overflow starts a new line instead. With no COLUMNS (or a wide terminal) every
-# group lands on one line and the output is byte-identical to the single-line form.
+# past the terminal width is lost. When the whole line does not fit, it splits once,
+# between identity (model, folder, branch) and metrics (context, usage). Two rows at
+# most: on a narrow pane vertical space is scarcer than horizontal, and a third row
+# would cost more than the truncation it avoids. What gets cut past that point is the
+# tail — a branch name you already know, or the last usage figure — rather than a
+# whole group, which is what a break-anywhere rule would sacrifice.
 usable=0
 case "${COLUMNS:-}" in
 	''|*[!0-9]*) : ;;
 	*) usable=$((COLUMNS - WIDTH_MARGIN)) ;;
 esac
 
-cur=0
-nl=0
+w_row1=$w_model
+[ "$w_dir" -gt 0 ] && {
+	[ "$w_row1" -gt 0 ] && w_row1=$((w_row1 + SEP_W))
+	w_row1=$((w_row1 + w_dir))
+}
+w_row2=$w_ctx
+[ "$w_usage" -gt 0 ] && {
+	[ "$w_row2" -gt 0 ] && w_row2=$((w_row2 + SEP_W))
+	w_row2=$((w_row2 + w_usage))
+}
+
 nl_dir=0
 nl_ctx=0
 nl_usage=0
-
-# Places one group and reports, via `nl`, whether it had to start a new line.
-place_group() {
-	nl=0
-	if [ "$cur" -eq 0 ]; then
-		cur=$1
-		return
-	fi
-	if [ "$usable" -gt 0 ] && [ $((cur + SEP_W + $1)) -gt "$usable" ]; then
-		nl=1
-		cur=$1
-	else
-		cur=$((cur + SEP_W + $1))
-	fi
-}
-
-[ "$w_model" -gt 0 ] && place_group "$w_model"
-[ "$w_dir"   -gt 0 ] && { place_group "$w_dir";   nl_dir=$nl; }
-[ "$w_ctx"   -gt 0 ] && { place_group "$w_ctx";   nl_ctx=$nl; }
-[ "$w_usage" -gt 0 ] && { place_group "$w_usage"; nl_usage=$nl; }
+if [ "$usable" -gt 0 ] && [ "$w_row1" -gt 0 ] && [ "$w_row2" -gt 0 ] &&
+   [ $((w_row1 + SEP_W + w_row2)) -gt "$usable" ]; then
+	nl_ctx=1
+	# with no context bar the usage group is what opens the second row
+	[ "$w_ctx" -eq 0 ] && nl_usage=1
+fi
 
 # --- assemble output ---
 SEP="\033[90m | \033[0m"

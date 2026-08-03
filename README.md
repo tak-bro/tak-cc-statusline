@@ -36,21 +36,20 @@ Bar color: green `< 50%`, yellow `≥ 50%`, rose `≥ 75%`, red `≥ 90%`.
 
 ## Narrow terminals
 
-Claude Code truncates each status line rather than wrapping it, so on a narrow terminal the right-hand segments would simply disappear. Instead the line breaks itself at segment boundaries — the context bar and usage stats move to a second line, and keep splitting further as the window shrinks:
+Claude Code truncates each status line rather than wrapping it, so on a narrow terminal the right-hand segments would simply disappear. Instead the line splits once, into identity and metrics:
 
 ```
 Opus 4.6 · high | encl • main | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%   ← wide
 
-Opus 4.6 · high | encl • main | █░░░░░░░░░ 7%                                                 ← ~100 cols
-5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
-
-Opus 4.6 · high                                                                               ← ~55 cols
-encl • main
-█░░░░░░░░░ 7%
-5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
+Opus 4.6 · high | encl • main                                                                 ← narrow
+█░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
 ```
 
-Width comes from `$COLUMNS`, which Claude Code sets for the statusline process. If it is missing everything stays on one line, which is also the exact output you get on a wide terminal — the wrapping never changes a line that already fits.
+Two rows at most. On a narrow pane vertical space is scarcer than horizontal, and a third row costs more than the truncation it avoids — so past that point the *tail* gets cut (a branch name you already know, or the last usage figure) rather than a whole segment.
+
+Width comes from `$COLUMNS`, which Claude Code sets for the statusline process. If it is missing everything stays on one line, which is also the exact output you get on a wide terminal — the split never changes a line that already fits.
+
+Note that Claude Code re-runs the statusline on message and state changes, not on terminal resize, so after resizing the split catches up on the next turn. Add `"refreshInterval": 2` to the `statusLine` block in `settings.json` if you want it to track the window immediately.
 
 ## Customize
 
