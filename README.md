@@ -34,12 +34,31 @@ The installer prompts before overwriting any existing `statusLine` config or scr
 
 Bar color: green `< 50%`, yellow `≥ 50%`, rose `≥ 75%`, red `≥ 90%`.
 
+## Narrow terminals
+
+Claude Code truncates each status line rather than wrapping it, so on a narrow terminal the right-hand segments would simply disappear. Instead the line breaks itself at segment boundaries — the context bar and usage stats move to a second line, and keep splitting further as the window shrinks:
+
+```
+Opus 4.6 · high | encl • main | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%   ← wide
+
+Opus 4.6 · high | encl • main | █░░░░░░░░░ 7%                                                 ← ~100 cols
+5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
+
+Opus 4.6 · high                                                                               ← ~55 cols
+encl • main
+█░░░░░░░░░ 7%
+5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
+```
+
+Width comes from `$COLUMNS`, which Claude Code sets for the statusline process. If it is missing everything stays on one line, which is also the exact output you get on a wide terminal — the wrapping never changes a line that already fits.
+
 ## Customize
 
 Both scripts live in `~/.claude/` after install — edit them in place.
 
 - **Colors**: `pick_color()` in `statusline.sh`
-- **Bar width**: the `10` in `build_bar "$used_int" 10`
+- **Bar width**: `BAR_WIDTH` near the top of `statusline.sh`
+- **Wrap threshold**: `WIDTH_MARGIN` — columns held back from `$COLUMNS`; raise it to break earlier
 - **Bar characters**: `█` and `░` in `build_bar()` — try `▓`/`▒`, `■`/`□`, `▰`/`▱`
 - **Model / folder / branch colors**: search for `\033[38;2;` near the bottom
 

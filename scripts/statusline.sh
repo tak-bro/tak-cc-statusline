@@ -9,6 +9,9 @@ USAGE_CACHE="${CACHE_BASE}/.statusline_usage_cache"
 LAST_ATTEMPT="${CACHE_BASE}/.statusline_fetch_attempt"
 USAGE_TTL=60      # refresh cache after 60s
 RETRY_TTL=30      # don't retry failed fetch within 30s
+BAR_WIDTH=10      # cells in the context bar
+SEP_W=3           # visible width of the " | " / " • " separators
+WIDTH_MARGIN=2    # columns held back for statusLine padding and rounding
 
 # --- portable helpers (BSD/GNU compatible) ---
 
@@ -161,58 +164,14 @@ if [ -n "$used" ]; then
 	if [ -n "$used_int" ]; then
 		ctx_str="${used_int}%"
 		ctx_color=$(pick_color "$used_int")
-		ctx_bar=$(build_bar "$used_int" 10 "$ctx_color")
+		ctx_bar=$(build_bar "$used_int" "$BAR_WIDTH" "$ctx_color")
 	fi
 fi
 
-# --- assemble single-line output ---
-SEP="\033[90m | \033[0m"
-DOT="\033[90m • \033[0m"
-
-# model
-printf "\033[38;5;208m\033[1m%s\033[22m\033[0m" "$model"
-
-# folder • branch
-printf "%b" "$SEP"
-printf "\033[1m\033[38;2;76;208;222m%s\033[22m\033[0m" "$dir_name"
-if [ -n "$branch" ]; then
-	printf "%b" "$DOT"
-	printf "\033[1m\033[38;2;192;103;222m%s\033[22m\033[0m" "$branch"
-fi
-
-# ctx with colored bar
-if [ -n "$ctx_str" ]; then
-	printf "%b" "$SEP"
-	printf "%s " "$ctx_bar"
-	printf "%s%s\033[0m" "$ctx_color" "$ctx_str"
-fi
-
-# 5h / 7d usage
-if [ -n "$five_h" ]; then
-	printf "%b" "$SEP"
-	printf "\033[38;2;156;162;175m5h %s%%\033[0m" "$five_h"
-	if [ -n "$five_h_reset" ]; then
-		delta=$(compute_delta "$five_h_reset")
-		[ -n "$delta" ] && printf " \033[2m\033[38;2;156;162;175m(%s)\033[0m" "$delta"
-	fi
-fi
-if [ -n "$seven_d" ]; then
-	if [ -n "$five_h" ]; then
-		printf "%b" "$DOT"
-	else
-		printf "%b" "$SEP"
-	fi
-	printf "\033[38;2;156;162;175m7d %s%%\033[0m" "$seven_d"
-	if [ -n "$seven_d_reset" ]; then
-		delta=$(compute_delta "$seven_d_reset")
-		[ -n "$delta" ] && printf " \033[2m\033[38;2;156;162;175m(%s)\033[0m" "$delta"
-	fi
-fi
-
-# per-model weekly usage (e.g. "Fable 12%"); shares the 7d reset window, so no delta
+# --- validate the scoped records once, so width and output agree ---
+# Output is "Name:pct;" for every record that survives; malformed ones are dropped.
+scoped_clean=""
 if [ -n "$scoped" ]; then
-	usage_shown=0
-	{ [ -n "$five_h" ] || [ -n "$seven_d" ]; } && usage_shown=1
 	set -f   # scoped is unquoted below; keep the shell from globbing it
 	old_ifs=$IFS
 	IFS=';'
@@ -222,14 +181,159 @@ if [ -n "$scoped" ]; then
 		pct=${record##*:}
 		[ -z "$name" ] && continue
 		case "$pct" in ''|*[!0-9]*) continue ;; esac
-		if [ "$usage_shown" = "1" ]; then
-			printf "%b" "$DOT"
-		else
-			printf "%b" "$SEP"
-		fi
-		printf "\033[38;2;156;162;175m%s %s%%\033[0m" "$name" "$pct"
-		usage_shown=1
+		scoped_clean="${scoped_clean}${name}:${pct};"
 	done
 	IFS=$old_ifs
 	set +f
+fi
+
+# --- reset deltas: computed once, used for both width and output ---
+five_h_delta=""
+seven_d_delta=""
+[ -n "$five_h" ] && [ -n "$five_h_reset" ] && five_h_delta=$(compute_delta "$five_h_reset")
+[ -n "$seven_d" ] && [ -n "$seven_d_reset" ] && seven_d_delta=$(compute_delta "$seven_d_reset")
+
+# --- visible widths, counted rather than measured ---
+# ANSI escapes never reach these numbers, and the multibyte glyphs (the bar cells,
+# the separator dots) are counted as the one column they occupy. `${#var}` is only
+# applied to the plain strings; a non-ASCII branch or folder name may overcount
+# under a byte-counting /bin/sh, which wraps a little early but never truncates.
+w_model=${#model}
+
+w_dir=${#dir_name}
+[ -n "$branch" ] && w_dir=$((w_dir + SEP_W + ${#branch}))
+
+w_ctx=0
+[ -n "$ctx_str" ] && w_ctx=$((BAR_WIDTH + 1 + ${#ctx_str}))
+
+w_usage=0
+if [ -n "$five_h" ]; then
+	w_usage=$((w_usage + 3 + ${#five_h} + 1))          # "5h NN%"
+	[ -n "$five_h_delta" ] && w_usage=$((w_usage + 3 + ${#five_h_delta}))   # " (1h 19m)"
+fi
+if [ -n "$seven_d" ]; then
+	[ "$w_usage" -gt 0 ] && w_usage=$((w_usage + SEP_W))
+	w_usage=$((w_usage + 3 + ${#seven_d} + 1))
+	[ -n "$seven_d_delta" ] && w_usage=$((w_usage + 3 + ${#seven_d_delta}))
+fi
+if [ -n "$scoped_clean" ]; then
+	set -f
+	old_ifs=$IFS
+	IFS=';'
+	for record in $scoped_clean; do
+		[ -z "$record" ] && continue
+		[ "$w_usage" -gt 0 ] && w_usage=$((w_usage + SEP_W))
+		w_usage=$((w_usage + ${#record}))   # "Name:pct" is as wide as "Name pct%"
+	done
+	IFS=$old_ifs
+	set +f
+fi
+
+# --- decide where the line breaks ---
+# Claude Code truncates each status line rather than soft-wrapping it, so anything
+# past the terminal width is lost. Groups are packed greedily: a group that would
+# overflow starts a new line instead. With no COLUMNS (or a wide terminal) every
+# group lands on one line and the output is byte-identical to the single-line form.
+usable=0
+case "${COLUMNS:-}" in
+	''|*[!0-9]*) : ;;
+	*) usable=$((COLUMNS - WIDTH_MARGIN)) ;;
+esac
+
+cur=0
+nl=0
+nl_dir=0
+nl_ctx=0
+nl_usage=0
+
+# Places one group and reports, via `nl`, whether it had to start a new line.
+place_group() {
+	nl=0
+	if [ "$cur" -eq 0 ]; then
+		cur=$1
+		return
+	fi
+	if [ "$usable" -gt 0 ] && [ $((cur + SEP_W + $1)) -gt "$usable" ]; then
+		nl=1
+		cur=$1
+	else
+		cur=$((cur + SEP_W + $1))
+	fi
+}
+
+[ "$w_model" -gt 0 ] && place_group "$w_model"
+[ "$w_dir"   -gt 0 ] && { place_group "$w_dir";   nl_dir=$nl; }
+[ "$w_ctx"   -gt 0 ] && { place_group "$w_ctx";   nl_ctx=$nl; }
+[ "$w_usage" -gt 0 ] && { place_group "$w_usage"; nl_usage=$nl; }
+
+# --- assemble output ---
+SEP="\033[90m | \033[0m"
+DOT="\033[90m • \033[0m"
+emitted=0
+
+# Emits the separator that belongs before a group: nothing when it opens the
+# output, a newline when it opens a line, " | " otherwise.
+open_group() {
+	if [ "$emitted" = "1" ]; then
+		if [ "$1" = "1" ]; then
+			printf '\n'
+		else
+			printf "%b" "$SEP"
+		fi
+	fi
+	emitted=1
+}
+
+# model
+if [ "$w_model" -gt 0 ]; then
+	open_group 0
+	printf "\033[38;5;208m\033[1m%s\033[22m\033[0m" "$model"
+fi
+
+# folder • branch
+if [ "$w_dir" -gt 0 ]; then
+	open_group "$nl_dir"
+	printf "\033[1m\033[38;2;76;208;222m%s\033[22m\033[0m" "$dir_name"
+	if [ -n "$branch" ]; then
+		printf "%b" "$DOT"
+		printf "\033[1m\033[38;2;192;103;222m%s\033[22m\033[0m" "$branch"
+	fi
+fi
+
+# ctx with colored bar
+if [ "$w_ctx" -gt 0 ]; then
+	open_group "$nl_ctx"
+	printf "%s " "$ctx_bar"
+	printf "%s%s\033[0m" "$ctx_color" "$ctx_str"
+fi
+
+# 5h / 7d / per-model usage
+if [ "$w_usage" -gt 0 ]; then
+	open_group "$nl_usage"
+	usage_shown=0
+	if [ -n "$five_h" ]; then
+		printf "\033[38;2;156;162;175m5h %s%%\033[0m" "$five_h"
+		[ -n "$five_h_delta" ] && printf " \033[2m\033[38;2;156;162;175m(%s)\033[0m" "$five_h_delta"
+		usage_shown=1
+	fi
+	if [ -n "$seven_d" ]; then
+		[ "$usage_shown" = "1" ] && printf "%b" "$DOT"
+		printf "\033[38;2;156;162;175m7d %s%%\033[0m" "$seven_d"
+		[ -n "$seven_d_delta" ] && printf " \033[2m\033[38;2;156;162;175m(%s)\033[0m" "$seven_d_delta"
+		usage_shown=1
+	fi
+	# per-model weekly usage (e.g. "Fable 12%"); shares the 7d reset, so no delta
+	if [ -n "$scoped_clean" ]; then
+		set -f
+		old_ifs=$IFS
+		IFS=';'
+		for record in $scoped_clean; do
+			[ -z "$record" ] && continue
+			[ "$usage_shown" = "1" ] && printf "%b" "$DOT"
+			printf "\033[38;2;156;162;175m%s %s%%\033[0m" "${record%:*}" "${record##*:}"
+			usage_shown=1
+		done
+		IFS=$old_ifs
+		set +f
+	fi
 fi
