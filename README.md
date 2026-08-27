@@ -3,7 +3,7 @@
 A minimal, colorful statusline for [Claude Code](https://claude.com/claude-code).
 
 ```
-Opus 4.6 · high | encl • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
+Opus 4.6 · high | prepare-deploy-3a • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
 ```
 
 ## Install
@@ -27,21 +27,29 @@ The installer prompts before overwriting any existing `statusLine` config or scr
 | Segment | Source |
 |---|---|
 | Model · effort | Claude Code, with `(1M context)` etc. stripped; reasoning effort (`.effort.level`) appended when reported |
-| Folder · branch | cwd + `git symbolic-ref` |
+| Session · branch | Claude Code's own session name (`debegi-fa`, or whatever you set with `/rename`), else the folder name; branch from `git symbolic-ref` |
 | Context bar + % | Claude Code's `context_window.used_percentage` |
 | 5h / 7d % | Anthropic OAuth usage endpoint (cached 60s) |
 | Per-model weekly % | Same endpoint's model-scoped weekly limits (e.g. `Fable 12%`); shown only when your plan has them, and labeled with whatever name the API reports |
 
 Bar color: green `< 50%`, yellow `≥ 50%`, rose `≥ 75%`, red `≥ 90%`.
 
+### Session name
+
+The first row names the session rather than the folder, since the folder is the one thing you already know — the same name Claude Code shows for the session elsewhere: `debegi-fa` derived from the folder, `fix-voice-session-detector` if you set it with `/rename`.
+
+Claude Code keeps one record per live session in `~/.claude/sessions/<pid>.json` and puts its name there, so that is where the label comes from, matched on the session id. Two fallbacks behind it: `session_name` from the statusline payload, which Claude Code sends once you have run `/rename`, and then the folder name.
+
+Labels are cut to 24 columns with an ellipsis, counting CJK characters as the two columns they occupy. Raise `LABEL_MAX` in `statusline.sh` for longer ones.
+
 ## Narrow terminals
 
 Claude Code truncates each status line rather than wrapping it, so on a narrow terminal the right-hand segments would simply disappear. Instead the line splits once, into identity and metrics:
 
 ```
-Opus 4.6 · high | encl • main | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%   ← wide
+Opus 4.6 · high | encl-7d • main | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%   ← wide
 
-Opus 4.6 · high | encl • main                                                                 ← narrow
+Opus 4.6 · high | encl-7d • main                                                                 ← narrow
 █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
 ```
 
@@ -59,7 +67,8 @@ Both scripts live in `~/.claude/` after install — edit them in place.
 - **Bar width**: `BAR_WIDTH` near the top of `statusline.sh`
 - **Split threshold**: `WIDTH_MARGIN` — columns held back from `$COLUMNS`; raise it to split earlier
 - **Bar characters**: `█` and `░` in `build_bar()` — try `▓`/`▒`, `■`/`□`, `▰`/`▱`
-- **Model / folder / branch colors**: search for `\033[38;2;` near the bottom
+- **Session label length**: `LABEL_MAX` near the top of `statusline.sh`
+- **Model / session / branch colors**: search for `\033[38;2;` near the bottom
 
 ## Troubleshooting
 
@@ -105,6 +114,7 @@ Forked from [xleddyl/claude-watch](https://github.com/xleddyl/claude-watch) — 
 - Background fetch with locking, atomic writes, and retry throttling
 - Per-model weekly limits from the usage endpoint's `limits` array
 - Width-aware layout that splits into two rows instead of being truncated
+- Session name in place of the folder name, read from Claude Code's session registry
 
 ## License
 

@@ -7,11 +7,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 CACHE_BASE="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 USAGE_CACHE="${CACHE_BASE}/.statusline_usage_cache"
 LAST_ATTEMPT="${CACHE_BASE}/.statusline_fetch_attempt"
+SESSION_DIR="${CACHE_BASE}/sessions"
 USAGE_TTL=60      # refresh cache after 60s
 RETRY_TTL=30      # don't retry failed fetch within 30s
 BAR_WIDTH=10      # cells in the context bar
+LABEL_MAX=24      # columns the session label may occupy before it is cut
 SEP_W=3           # visible width of the " | " / " • " separators
 WIDTH_MARGIN=2    # columns held back for statusLine padding and rounding
+TAB=$(printf '\t')  # field separator returned by fit_label
 
 # --- portable helpers (BSD/GNU compatible) ---
 
@@ -25,20 +28,77 @@ portable_iso_to_epoch() {
 		TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "$clean" "+%s" 2>/dev/null
 }
 
+# --- session label helpers ---
+
+# The name Claude Code gives this session — `debegi-fa` when derived from the
+# folder, whatever you typed when set with /rename. Claude Code keeps one JSON
+# record per live session in $CLAUDE_CONFIG_DIR/sessions/<pid>.json; the pid is not
+# ours to guess, so the record is found by session id. grep narrows the glob first,
+# which keeps one malformed record from taking the whole lookup down with it.
+read_session_name() {
+	[ -n "$1" ] && [ -d "$SESSION_DIR" ] || return
+	matches=$(grep -l "\"sessionId\":\"$1\"" "$SESSION_DIR"/*.json 2>/dev/null)
+	[ -n "$matches" ] || return
+	# a resumed session can leave the dead pid's record behind: newest write wins
+	# shellcheck disable=SC2086  # word splitting is how the file list is passed on
+	name=$(jq -s -r 'map(select(.name != null)) | max_by(.updatedAt // 0) | .name // ""' \
+		$matches 2>/dev/null)
+	printf '%s' "$name" | tr '\r\n\t' '   '
+}
+
+# Prints "<columns>\t<label>", cutting the label to LABEL_MAX columns with an
+# ellipsis. Session titles are often CJK, where one character occupies two columns
+# and `${#var}` — characters under bash, bytes under dash — is wrong either way:
+# undercounting overflows row 1 into Claude Code's truncation, overcounting splits
+# a line that fits. jq owns the codepoints, so it does the counting and the cut.
+fit_label() {
+	printf '%s' "$1" | jq -Rr --argjson max "$LABEL_MAX" '
+		def cw: if . >= 4352 and (. <= 4447
+			or (. >= 11904 and . <= 42191)
+			or (. >= 44032 and . <= 55203)
+			or (. >= 63744 and . <= 64255)
+			or (. >= 65072 and . <= 65376)
+			or (. >= 65504 and . <= 65510)
+			or (. >= 127744 and . <= 129279)) then 2 else 1 end;
+		. as $s
+		| [explode[] | [., cw]] as $cs
+		| ($cs | map(.[1]) | add // 0) as $tw
+		| if $tw <= $max then "\($tw)\t\($s)"
+		  else (reduce $cs[] as $c ({s: [], n: 0, done: false};
+			if .done or (.n + $c[1] > $max - 1) then (.done = true)
+			else {s: (.s + [$c[0]]), n: (.n + $c[1]), done: false} end))
+			| "\(.n + 1)\t\((.s | implode) + "…")"
+		  end' 2>/dev/null
+}
+
 # --- single jq call: extract model, dir, used% with type check ---
 # used% returns "" for non-numbers (missing, null, string) so we can detect properly
+# session_name is free text typed into /rename, so it comes last and gets its
+# newlines flattened: the fields are read back by line number below.
 parsed=$(printf '%s' "$input" | jq -r '
 	(.model.display_name // ""),
 	(.effort.level // ""),
 	(.workspace.current_dir // .cwd // ""),
-	(.context_window.used_percentage | if type == "number" then tostring else "" end)
+	(.context_window.used_percentage | if type == "number" then tostring else "" end),
+	(.session_id // ""),
+	(.session_name // "" | gsub("[\r\n\t]"; " "))
 ' 2>/dev/null)
 
 model=$(printf '%s\n' "$parsed" | sed -n '1p' | sed -E 's/[[:space:]]*\([^)]*\)//g')
 effort=$(printf '%s\n' "$parsed" | sed -n '2p')
 dir=$(printf '%s\n' "$parsed" | sed -n '3p')
 used=$(printf '%s\n' "$parsed" | sed -n '4p')
+session_id=$(printf '%s\n' "$parsed" | sed -n '5p')
+session_name=$(printf '%s\n' "$parsed" | sed -n '6p')
 dir_name=$(basename "$dir" 2>/dev/null)
+
+# --- session label: the session's own name, else the folder ---
+# The registry record carries both the derived name and anything set with /rename,
+# so it answers first. session_name covers a Claude Code that sends the rename but
+# keeps no registry record; the folder name is what is left when neither exists.
+label=$(read_session_name "$session_id")
+[ -z "$label" ] && label=$session_name
+[ -z "$label" ] && label=$dir_name
 
 # Append reasoning effort (dot style) to model when Claude Code reports it
 [ -n "$effort" ] && model="${model} · ${effort}"
@@ -200,7 +260,13 @@ seven_d_delta=""
 # under a byte-counting /bin/sh, which wraps a little early but never truncates.
 w_model=${#model}
 
-w_dir=${#dir_name}
+fitted=$(fit_label "$label")
+if [ -n "$fitted" ]; then
+	w_dir=${fitted%%"$TAB"*}
+	label=${fitted#*"$TAB"}
+else
+	w_dir=${#label}
+fi
 [ -n "$branch" ] && w_dir=$((w_dir + SEP_W + ${#branch}))
 
 w_ctx=0
@@ -291,7 +357,7 @@ fi
 # folder • branch
 if [ "$w_dir" -gt 0 ]; then
 	open_group "$nl_dir"
-	printf "\033[1m\033[38;2;76;208;222m%s\033[22m\033[0m" "$dir_name"
+	printf "\033[1m\033[38;2;76;208;222m%s\033[22m\033[0m" "$label"
 	if [ -n "$branch" ]; then
 		printf "%b" "$DOT"
 		printf "\033[1m\033[38;2;192;103;222m%s\033[22m\033[0m" "$branch"
