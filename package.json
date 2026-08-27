@@ -1,6 +1,6 @@
 {
   "name": "tak-cc-statusline",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A minimal, colorful statusline for Claude Code",
   "bin": {
     "tak-cc-statusline": "install.js"
