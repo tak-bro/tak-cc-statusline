@@ -3,7 +3,7 @@
 A minimal, colorful statusline for [Claude Code](https://claude.com/claude-code).
 
 ```
-Opus 4.6 · high | prepare-deploy-3a • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
+Opus 4.6 · high | prepare-deploy-3a • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | @louis 5h 21% (3h 12m) • 7d 63% (4d 2h) !1d 17h • Fable 12%
 ```
 
 ## Install
@@ -29,7 +29,9 @@ The installer prompts before overwriting any existing `statusLine` config or scr
 | Model · effort | Claude Code, with `(1M context)` etc. stripped; reasoning effort (`.effort.level`) appended when reported |
 | Session · branch | Claude Code's own session name (`debegi-fa`, or whatever you set with `/rename`), else the folder name; branch from `git symbolic-ref` |
 | Context bar + % | Claude Code's `context_window.used_percentage` |
+| Account | `@` + email local part of the account the usage figures were fetched with — tells logins apart when you switch between several |
 | 5h / 7d % | Anthropic OAuth usage endpoint (cached 60s) |
+| Runway `!1d 17h` | Shown in red after a window's reset countdown when, at the average rate so far, the window hits 100% before it resets — the time is how long until it does. Hidden in the first tenth of a window, where the rate is noise |
 | Per-model weekly % | Same endpoint's model-scoped weekly limits (e.g. `Fable 12%`); shown only when your plan has them, and labeled with whatever name the API reports |
 
 Bar color: green `< 50%`, yellow `≥ 50%`, rose `≥ 75%`, red `≥ 90%`.
@@ -83,7 +85,7 @@ sh ~/.claude/fetch-usage.sh
 cat ~/.claude/.statusline_usage_cache
 ```
 
-A healthy cache is five lines: the 5h and 7d percentages, their two reset timestamps, and the per-model weekly limits (empty if your plan has none). If the file is empty, your OAuth token couldn't be read. macOS: check Keychain for `Claude Code-credentials`. Linux: check `~/.claude/.credentials.json` exists.
+A healthy cache is six lines: the 5h and 7d percentages, their two reset timestamps, the per-model weekly limits (empty if your plan has none), and the account label. If the file is empty, your OAuth token couldn't be read. macOS: check Keychain for `Claude Code-credentials`. Linux: check `~/.claude/.credentials.json` exists.
 
 **Usage shows another account after switching logins**
 

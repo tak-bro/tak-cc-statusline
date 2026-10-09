@@ -9,6 +9,9 @@
     "install.js",
     "scripts/"
   ],
+  "scripts": {
+    "test": "sh test/run.sh"
+  },
   "keywords": [
     "claude-code",
     "claude",

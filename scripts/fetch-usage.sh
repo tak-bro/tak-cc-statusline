@@ -8,6 +8,7 @@
 #   Line 3: five_hour.resets_at (raw ISO string)
 #   Line 4: seven_day.resets_at (raw ISO string)
 #   Line 5: model-scoped weekly limits, "Name:pct" joined by ";" (may be empty)
+#   Line 6: account label the numbers belong to — email local part (may be empty)
 
 # Honor Claude Code's CLAUDE_CONFIG_DIR override, fallback to ~/.claude
 CACHE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
@@ -49,12 +50,17 @@ trap 'rmdir "$LOCK_DIR" 2>/dev/null; rm -f "${CACHE_DIR}/.statusline_body.tmp."*
 # Mark attempt timestamp regardless of success/failure (throttles retries)
 touch "$LAST_ATTEMPT" 2>/dev/null
 
+# --- logged-in account: UUID keys the token cache, label tags the usage cache ---
+# Read here, not inside get_token: that runs in $(…), whose variables die with it.
+account_info=$(jq -r '.oauthAccount | (.accountUuid // ""), (.emailAddress // "" | split("@")[0] // "")' \
+	"$CLAUDE_JSON" 2>/dev/null)
+account=$(printf '%s\n' "$account_info" | sed -n '1p')
+account_label=$(printf '%s\n' "$account_info" | sed -n '2p' | tr -cd 'A-Za-z0-9._-' | cut -c1-12)
+
 # --- get_token: try cache, then Keychain (macOS), then credentials file (Linux/WSL) ---
 # Token cache layout: line 1 = account UUID, line 2 = token. A cached token is
 # only reused for the same account, so switching logins takes effect at once.
 get_token() {
-	account=$(jq -r '.oauthAccount.accountUuid // empty' "$CLAUDE_JSON" 2>/dev/null)
-
 	# 1. Try cache (must be non-empty and belong to the current account)
 	if [ -n "$account" ] && [ -s "$TOKEN_CACHE" ]; then
 		cached_account="" cached_token=""
@@ -168,7 +174,8 @@ if [ -n "$five_h_raw" ] && [ -n "$seven_d_raw" ]; then
 	seven_d=$(printf "%.0f" "$seven_d_raw" 2>/dev/null)
 	# Atomic write: only mv if printf succeeded fully (avoids corrupt cache on disk-full / SIGPIPE)
 	tmp="${USAGE_CACHE}.tmp.$$"
-	if printf '%s\n%s\n%s\n%s\n%s\n' "$five_h" "$seven_d" "$five_h_reset" "$seven_d_reset" "$scoped" > "$tmp" 2>/dev/null; then
+	if printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$five_h" "$seven_d" "$five_h_reset" "$seven_d_reset" "$scoped" \
+		"$account_label" > "$tmp" 2>/dev/null; then
 		mv -f "$tmp" "$USAGE_CACHE"
 	else
 		rm -f "$tmp" 2>/dev/null

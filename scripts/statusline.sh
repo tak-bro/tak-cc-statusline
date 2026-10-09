@@ -116,18 +116,20 @@ seven_d=""
 five_h_reset=""
 seven_d_reset=""
 scoped=""
+acct_label=""
 need_refresh=0
 now_epoch=$(date -u +%s)
 
 if [ -f "$USAGE_CACHE" ]; then
 	# Single read block instead of separate sed calls.
-	# Line 5 is absent in caches written by older versions; `scoped` stays empty.
+	# Lines 5 and 6 are absent in caches written by older versions; they stay empty.
 	{
 		IFS= read -r five_h
 		IFS= read -r seven_d
 		IFS= read -r five_h_reset
 		IFS= read -r seven_d_reset
 		IFS= read -r scoped
+		IFS= read -r acct_label
 	} < "$USAGE_CACHE" 2>/dev/null
 	cache_mtime=$(portable_mtime "$USAGE_CACHE")
 	if [ -n "$cache_mtime" ]; then
@@ -155,12 +157,9 @@ if [ "$need_refresh" = "1" ] && [ -f "$SCRIPT_DIR/fetch-usage.sh" ]; then
 	sh "$SCRIPT_DIR/fetch-usage.sh" </dev/null >/dev/null 2>&1 &
 fi
 
-# --- compute_delta: human-readable time until reset ---
-compute_delta() {
-	reset_epoch=$(portable_iso_to_epoch "$1")
-	[ -z "$reset_epoch" ] && return
-	diff=$((reset_epoch - now_epoch))
-	if [ "$diff" -le 0 ]; then echo "now"; return; fi
+# --- fmt_duration: seconds as "2d 3h", "1h 19m" or "7m" ---
+fmt_duration() {
+	diff=$1
 	days=$((diff / 86400))
 	hours=$(((diff % 86400) / 3600))
 	minutes=$(((diff % 3600) / 60))
@@ -171,6 +170,34 @@ compute_delta() {
 	else
 		echo "${minutes}m"
 	fi
+}
+
+# --- compute_delta: human-readable time until reset ---
+compute_delta() {
+	reset_epoch=$(portable_iso_to_epoch "$1")
+	[ -z "$reset_epoch" ] && return
+	diff=$((reset_epoch - now_epoch))
+	if [ "$diff" -le 0 ]; then echo "now"; return; fi
+	fmt_duration "$diff"
+}
+
+# --- compute_runway: time until the window hits 100% at its average rate so far ---
+# Prints nothing unless that comes before the reset. Too early in a window the rate
+# is noise (one busy hour reads as a week-long sprint), so the first tenth is skipped.
+compute_runway() {
+	used=$1
+	window=$3
+	case "$used" in ''|*[!0-9]*) return ;; esac
+	[ "$used" -gt 0 ] && [ "$used" -lt 100 ] || return
+	reset_epoch=$(portable_iso_to_epoch "$2")
+	[ -z "$reset_epoch" ] && return
+	remaining=$((reset_epoch - now_epoch))
+	[ "$remaining" -gt 0 ] || return
+	elapsed=$((window - remaining))
+	[ "$elapsed" -ge $((window / 10)) ] || return
+	runway=$(((100 - used) * elapsed / used))
+	[ "$runway" -lt 60 ] && runway=60   # never "!0m"
+	[ "$runway" -lt "$remaining" ] && fmt_duration "$runway"
 }
 
 # --- pick_color: ANSI color escape based on usage percentage ---
@@ -252,6 +279,10 @@ five_h_delta=""
 seven_d_delta=""
 [ -n "$five_h" ] && [ -n "$five_h_reset" ] && five_h_delta=$(compute_delta "$five_h_reset")
 [ -n "$seven_d" ] && [ -n "$seven_d_reset" ] && seven_d_delta=$(compute_delta "$seven_d_reset")
+five_h_runway=""
+seven_d_runway=""
+[ -n "$five_h_delta" ] && five_h_runway=$(compute_runway "$five_h" "$five_h_reset" 18000)
+[ -n "$seven_d_delta" ] && seven_d_runway=$(compute_runway "$seven_d" "$seven_d_reset" 604800)
 
 # --- visible widths, counted rather than measured ---
 # ANSI escapes never reach these numbers, and the multibyte glyphs (the bar cells,
@@ -276,11 +307,13 @@ w_usage=0
 if [ -n "$five_h" ]; then
 	w_usage=$((w_usage + 3 + ${#five_h} + 1))          # "5h NN%"
 	[ -n "$five_h_delta" ] && w_usage=$((w_usage + 3 + ${#five_h_delta}))   # " (1h 19m)"
+	[ -n "$five_h_runway" ] && w_usage=$((w_usage + 2 + ${#five_h_runway}))  # " !42m"
 fi
 if [ -n "$seven_d" ]; then
 	[ "$w_usage" -gt 0 ] && w_usage=$((w_usage + SEP_W))
 	w_usage=$((w_usage + 3 + ${#seven_d} + 1))
 	[ -n "$seven_d_delta" ] && w_usage=$((w_usage + 3 + ${#seven_d_delta}))
+	[ -n "$seven_d_runway" ] && w_usage=$((w_usage + 2 + ${#seven_d_runway}))
 fi
 if [ -n "$scoped_clean" ]; then
 	set -f
@@ -289,11 +322,13 @@ if [ -n "$scoped_clean" ]; then
 	for record in $scoped_clean; do
 		[ -z "$record" ] && continue
 		[ "$w_usage" -gt 0 ] && w_usage=$((w_usage + SEP_W))
-		w_usage=$((w_usage + ${#record}))   # "Name:pct" is as wide as "Name pct%"
+		w_usage=$((w_usage + ${#record} + 1))   # "Name:pct" printed as "Name pct%"
 	done
 	IFS=$old_ifs
 	set +f
 fi
+# "@louis " — whose limits these are; only worth showing next to some numbers
+[ "$w_usage" -gt 0 ] && [ -n "$acct_label" ] && w_usage=$((w_usage + 1 + ${#acct_label} + 1))
 
 # --- decide whether the line breaks ---
 # Claude Code truncates each status line rather than soft-wrapping it, so anything
@@ -375,15 +410,18 @@ fi
 if [ "$w_usage" -gt 0 ]; then
 	open_group "$nl_usage"
 	usage_shown=0
+	[ -n "$acct_label" ] && printf "\033[1m\033[38;2;156;162;175m@%s\033[22m\033[0m " "$acct_label"
 	if [ -n "$five_h" ]; then
 		printf "\033[38;2;156;162;175m5h %s%%\033[0m" "$five_h"
 		[ -n "$five_h_delta" ] && printf " \033[2m\033[38;2;156;162;175m(%s)\033[0m" "$five_h_delta"
+		[ -n "$five_h_runway" ] && printf " \033[38;2;225;85;100m!%s\033[0m" "$five_h_runway"
 		usage_shown=1
 	fi
 	if [ -n "$seven_d" ]; then
 		[ "$usage_shown" = "1" ] && printf "%b" "$DOT"
 		printf "\033[38;2;156;162;175m7d %s%%\033[0m" "$seven_d"
 		[ -n "$seven_d_delta" ] && printf " \033[2m\033[38;2;156;162;175m(%s)\033[0m" "$seven_d_delta"
+		[ -n "$seven_d_runway" ] && printf " \033[38;2;225;85;100m!%s\033[0m" "$seven_d_runway"
 		usage_shown=1
 	fi
 	# per-model weekly usage (e.g. "Fable 12%"); shares the 7d reset, so no delta
