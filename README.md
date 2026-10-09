@@ -85,6 +85,10 @@ cat ~/.claude/.statusline_usage_cache
 
 A healthy cache is five lines: the 5h and 7d percentages, their two reset timestamps, and the per-model weekly limits (empty if your plan has none). If the file is empty, your OAuth token couldn't be read. macOS: check Keychain for `Claude Code-credentials`. Linux: check `~/.claude/.credentials.json` exists.
 
+**Usage shows another account after switching logins**
+
+The OAuth token is cached for 15 minutes, keyed by the `oauthAccount.accountUuid` in `~/.claude.json`, so a login switch that rewrites the credentials and that block (e.g. an account-switcher plugin) picks up the new token on the next fetch. The usage numbers themselves can lag by up to 60s until that fetch.
+
 **API returns 401**
 
 The hardcoded `user-agent: claude-code/2.1.11` may need bumping. Edit `fetch-usage.sh`.
