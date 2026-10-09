@@ -18,6 +18,8 @@ LOCK_DIR="${CACHE_DIR}/.statusline_fetch.lock"
 TOKEN_TTL=900       # 15 minutes
 STALE_LOCK=30       # seconds before a held lock is considered crashed
 CREDS_FILE="${CACHE_DIR}/.credentials.json"
+# Identity of the logged-in account; account switchers rewrite it with the credentials
+CLAUDE_JSON="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
 
 mkdir -p "$CACHE_DIR"
 
@@ -48,15 +50,24 @@ trap 'rmdir "$LOCK_DIR" 2>/dev/null; rm -f "${CACHE_DIR}/.statusline_body.tmp."*
 touch "$LAST_ATTEMPT" 2>/dev/null
 
 # --- get_token: try cache, then Keychain (macOS), then credentials file (Linux/WSL) ---
+# Token cache layout: line 1 = account UUID, line 2 = token. A cached token is
+# only reused for the same account, so switching logins takes effect at once.
 get_token() {
-	# 1. Try cache (must be non-empty)
-	if [ -s "$TOKEN_CACHE" ]; then
+	account=$(jq -r '.oauthAccount.accountUuid // empty' "$CLAUDE_JSON" 2>/dev/null)
+
+	# 1. Try cache (must be non-empty and belong to the current account)
+	if [ -n "$account" ] && [ -s "$TOKEN_CACHE" ]; then
+		cached_account="" cached_token=""
+		{
+			IFS= read -r cached_account
+			IFS= read -r cached_token
+		} < "$TOKEN_CACHE" 2>/dev/null
 		cache_mtime=$(portable_mtime "$TOKEN_CACHE")
-		if [ -n "$cache_mtime" ]; then
+		if [ "$cached_account" = "$account" ] && [ -n "$cached_token" ] && [ -n "$cache_mtime" ]; then
 			cache_age=$(( $(date -u +%s) - cache_mtime ))
 			[ "$cache_age" -lt 0 ] && cache_age=0
 			if [ "$cache_age" -lt "$TOKEN_TTL" ]; then
-				cat "$TOKEN_CACHE" 2>/dev/null
+				printf '%s' "$cached_token"
 				return
 			fi
 		fi
@@ -77,17 +88,18 @@ get_token() {
 		token=$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDS_FILE" 2>/dev/null)
 	fi
 
-	if [ -n "$token" ]; then
+	# Without an account to key on, skip caching rather than risk serving another login's token
+	if [ -n "$token" ] && [ -n "$account" ]; then
 		# Atomic write with restrictive perms; only mv if write succeeded
 		tmp="${TOKEN_CACHE}.tmp.$$"
-		if (umask 077; printf '%s' "$token" > "$tmp") 2>/dev/null; then
+		if (umask 077; printf '%s\n%s\n' "$account" "$token" > "$tmp") 2>/dev/null; then
 			chmod 600 "$tmp" 2>/dev/null
 			mv -f "$tmp" "$TOKEN_CACHE"
 		else
 			rm -f "$tmp" 2>/dev/null
 		fi
-		printf '%s' "$token"
 	fi
+	printf '%s' "$token"
 }
 
 token=$(get_token)
