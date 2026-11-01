@@ -62,7 +62,7 @@ function render({ model, effort, session, branch, ctx, fiveH, sevenD, scoped = '
 // --- ANSI → cells ---
 const DEFAULT_FG = [192, 197, 208];
 const ANSI_GRAY = [128, 132, 142]; // \033[90m
-const TRACK = [80, 85, 95]; // the empty part of the bar
+const TRACK = [56, 59, 69]; // the empty part of the bar: rgb(80,85,95) at 55% over the window color
 
 function xterm256(n) {
 	if (n === 208) return [255, 135, 0];
@@ -121,7 +121,7 @@ function drawRow(cells, y) {
 		if (c.ch === '█' || c.ch === '░') {
 			flush();
 			const solid = c.ch === '█';
-			out += `<rect x="${x}" y="${y - BAR_H + 4}" width="${CW}" height="${BAR_H}" fill="${rgb(solid ? c.fg : TRACK)}"${solid ? '' : ' opacity=".55"'}/>`;
+			out += `<rect x="${x}" y="${y - BAR_H + 4}" width="${CW + 0.5}" height="${BAR_H}" fill="${rgb(solid ? c.fg : TRACK)}"/>`;
 			return;
 		}
 		if (c.ch === ' ') {
@@ -146,18 +146,10 @@ function svg(title, ansi) {
 	const winW = Math.max(cols * CW + PAD_X * 2, 560);
 	const barH = 38;
 	const winH = barH + PAD_Y * 2 + (rows.length - 1) * LH + 14;
-	const margin = 28;
-	const W = winW + margin * 2;
-	const Hh = winH + margin * 2;
 	const body = rows.map((r, i) => drawRow(r, barH + PAD_Y + 12 + i * LH)).join('');
-	return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${Hh}" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="${esc(title)}">
-<defs>
-<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#2563eb"/><stop offset="1" stop-color="#06b6d4"/></linearGradient>
-<filter id="sh" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".45"/></filter>
-</defs>
-<rect width="${W}" height="${Hh}" rx="18" fill="url(#bg)"/>
-<g transform="translate(${margin} ${margin})">
-<rect width="${winW}" height="${winH}" rx="12" fill="#1a1b26" filter="url(#sh)"/>
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="${winW}" height="${winH}" viewBox="0 0 ${winW} ${winH}" role="img" aria-label="${esc(title)}">
+<g>
+<rect width="${winW}" height="${winH}" rx="12" fill="#1a1b26"/>
 <path d="M0 12a12 12 0 0 1 12-12h${winW - 24}a12 12 0 0 1 12 12v${barH - 12}H0z" fill="#24253a"/>
 <circle cx="22" cy="${barH / 2}" r="6" fill="#ff5f56"/><circle cx="42" cy="${barH / 2}" r="6" fill="#ffbd2e"/><circle cx="62" cy="${barH / 2}" r="6" fill="#27c93f"/>
 <text x="${winW / 2}" y="${barH / 2 + 5}" text-anchor="middle" fill="#7a7f93" font-size="13" font-family="${FONT_STACK}">${esc(title)}</text>
