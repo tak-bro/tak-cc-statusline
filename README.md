@@ -1,10 +1,26 @@
+<div align="center">
+
 # tak-cc-statusline
 
+**See your Claude limits before they see you.**<br>
 A minimal, colorful statusline for [Claude Code](https://claude.com/claude-code).
 
-```
-Opus 4.6 · high | prepare-deploy-3a • feature/louis-prepare-deploy | █░░░░░░░░░ 7% | @louis 5h 21% (3h 12m) • 7d 63% (4d 2h) !1d 17h • Fable 12%
-```
+[![npm](https://img.shields.io/npm/v/tak-cc-statusline?color=cb3837&logo=npm)](https://www.npmjs.com/package/tak-cc-statusline)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![node](https://img.shields.io/badge/node-%E2%89%A514-339933?logo=node.js&logoColor=white)](package.json)
+[![shell](https://img.shields.io/badge/POSIX-sh-4EAA25?logo=gnubash&logoColor=white)](scripts/statusline.sh)
+
+<img src="docs/img/statusline.svg" alt="tak-cc-statusline showing model, session, branch, context bar and 5h/7d usage" width="100%">
+
+</div>
+
+- **Rate limits at a glance** — 5h and 7d usage with a reset countdown, plus per-model weekly limits (`Fable 12%`).
+- **Runway warning** — a red `!1d 16h` appears when, at your pace so far, a window runs out before it resets.
+- **Knows your plan** — verified Ultra accounts have no 5-hour window, so the 5h segment simply isn't there.
+- **Account badge** — `@louis` shows whose limits you are looking at when you switch logins.
+- **Session-aware** — shows the session's own name (`/rename` friendly), the git branch and a context bar.
+- **Fits any pane** — splits into two rows instead of being truncated on a narrow terminal.
+- **Tiny footprint** — two POSIX `sh` scripts, `jq` and `curl`; fetches in the background with locking and atomic writes.
 
 ## Install
 
@@ -30,11 +46,21 @@ The installer prompts before overwriting any existing `statusLine` config or scr
 | Session · branch | Claude Code's own session name (`debegi-fa`, or whatever you set with `/rename`), else the folder name; branch from `git symbolic-ref` |
 | Context bar + % | Claude Code's `context_window.used_percentage` |
 | Account | `@` + email local part of the account the usage figures were fetched with — tells logins apart when you switch between several |
-| 5h / 7d % | Anthropic OAuth usage endpoint (cached 60s) |
+| 5h / 7d % | Anthropic OAuth usage endpoint (cached 60s); 5h is hidden on plans without a 5-hour window (verified Ultra accounts) |
 | Runway `!1d 17h` | Shown in red after a window's reset countdown when, at the average rate so far, the window hits 100% before it resets — the time is how long until it does. Hidden in the first tenth of a window, where the rate is noise |
 | Per-model weekly % | Same endpoint's model-scoped weekly limits (e.g. `Fable 12%`); shown only when your plan has them, and labeled with whatever name the API reports |
 
-Bar color: green `< 50%`, yellow `≥ 50%`, rose `≥ 75%`, red `≥ 90%`.
+### Ultra
+
+<img src="docs/img/ultra.svg" alt="Statusline on a verified Ultra account: no 5h segment" width="100%">
+
+Verified Ultra accounts have no 5-hour limit, and the usage endpoint reports `five_hour: null` for them. The 5h segment is hidden rather than shown as `0%`; 7d, the runway warning and per-model limits work as usual.
+
+### Bar colors
+
+<img src="docs/img/colors.svg" alt="Context bar in green, yellow, rose and red" width="100%">
+
+Green `< 50%`, yellow `≥ 50%`, rose `≥ 75%`, red `≥ 90%`.
 
 ### Session name
 
@@ -48,12 +74,7 @@ Labels are cut to 24 columns with an ellipsis, counting CJK characters as the tw
 
 Claude Code truncates each status line rather than wrapping it, so on a narrow terminal the right-hand segments would simply disappear. Instead the line splits once, into identity and metrics:
 
-```
-Opus 4.6 · high | encl-7d • main | █░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%   ← wide
-
-Opus 4.6 · high | encl-7d • main                                                                 ← narrow
-█░░░░░░░░░ 7% | 5h 21% (3h 12m) • 7d 3% (6d 9h) • Fable 12%
-```
+<img src="docs/img/narrow.svg" alt="On a narrow pane the statusline splits into identity and metrics rows" width="100%">
 
 Two rows at most. On a narrow pane vertical space is scarcer than horizontal, and a third row costs more than the truncation it avoids — so past that point the *tail* gets cut (a branch name you already know, or the last usage figure) rather than a whole segment.
 
@@ -72,6 +93,10 @@ Both scripts live in `~/.claude/` after install — edit them in place.
 - **Session label length**: `LABEL_MAX` near the top of `statusline.sh`
 - **Model / session / branch colors**: search for `\033[38;2;` near the bottom
 
+### Regenerating the screenshots
+
+The pictures in this README are not mockups: `node docs/make-screenshots.js` runs the real `scripts/statusline.sh` against fixture data and writes `docs/img/*.svg`. Re-run it after changing the output.
+
 ## Troubleshooting
 
 **`statusline skipped · restart to fix`**
@@ -85,7 +110,7 @@ sh ~/.claude/fetch-usage.sh
 cat ~/.claude/.statusline_usage_cache
 ```
 
-A healthy cache is six lines: the 5h and 7d percentages, their two reset timestamps, the per-model weekly limits (empty if your plan has none), and the account label. If the file is empty, your OAuth token couldn't be read. macOS: check Keychain for `Claude Code-credentials`. Linux: check `~/.claude/.credentials.json` exists.
+A healthy cache is six lines: the 5h and 7d percentages (5h empty on plans without a 5-hour window), their two reset timestamps, the per-model weekly limits (empty if your plan has none), and the account label. If the file is empty, your OAuth token couldn't be read. macOS: check Keychain for `Claude Code-credentials`. Linux: check `~/.claude/.credentials.json` exists.
 
 **Usage shows another account after switching logins**
 
