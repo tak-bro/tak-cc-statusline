@@ -79,6 +79,15 @@ sh "$HOME/.claude/fetch-usage.sh"
 check "fetch writes sanitized, cut label as line 6" "$(sed -n 6p "$CACHE")" "^manybad.char$"
 check "fetch keeps lines 1-2" "$(sed -n 1,2p "$CACHE" | tr '\n' ' ')" "^7 8 $"
 
+# verified Ultra: the API sends five_hour: null — weekly numbers must still land
+export FAKE_BODY='{"five_hour":null,"seven_day":{"utilization":38,"resets_at":"2030-01-01T00:00:00Z"}}'
+rm -f "$CACHE"
+sh "$HOME/.claude/fetch-usage.sh"
+check "no 5h window still writes 7d" "$(sed -n 1,3p "$CACHE" | tr '\n' ' ')" "^ 38  $"
+out=$(printf '%s' "$STDIN" | sh "$HOME/.claude/statusline.sh" | strip)
+check "no 5h window hides 5h" "$out" "5h" absent
+check "no 5h window shows 7d" "$out" "7d 38%"
+
 echo '{}' > "$HOME/.claude.json"
 rm -f "$CACHE"
 sh "$HOME/.claude/fetch-usage.sh"

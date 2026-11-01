@@ -3,7 +3,7 @@
 # Fetches Claude rate-limit usage and writes them to the cache.
 #
 # Cache layout (atomic write):
-#   Line 1: five_hour.utilization (integer %)
+#   Line 1: five_hour.utilization (integer %; empty when the plan has no 5-hour window)
 #   Line 2: seven_day.utilization (integer %)
 #   Line 3: five_hour.resets_at (raw ISO string)
 #   Line 4: seven_day.resets_at (raw ISO string)
@@ -168,9 +168,11 @@ five_h_reset=$(printf '%s\n' "$parsed" | sed -n '3p')
 seven_d_reset=$(printf '%s\n' "$parsed" | sed -n '4p')
 scoped=$(printf '%s\n' "$parsed" | sed -n '5p')
 
-# Both utilizations must be valid numbers; otherwise skip cache write
-if [ -n "$five_h_raw" ] && [ -n "$seven_d_raw" ]; then
-	five_h=$(printf "%.0f" "$five_h_raw" 2>/dev/null)
+# The weekly utilization must be a valid number; otherwise skip the cache write.
+# five_hour is null on plans without a 5-hour window (verified Ultra), so 5h may be empty.
+if [ -n "$seven_d_raw" ]; then
+	five_h=""
+	[ -n "$five_h_raw" ] && five_h=$(printf "%.0f" "$five_h_raw" 2>/dev/null)
 	seven_d=$(printf "%.0f" "$seven_d_raw" 2>/dev/null)
 	# Atomic write: only mv if printf succeeded fully (avoids corrupt cache on disk-full / SIGPIPE)
 	tmp="${USAGE_CACHE}.tmp.$$"
